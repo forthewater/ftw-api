@@ -8,9 +8,11 @@ import org.example.forthewater.client.OverpassClient;
 import org.example.forthewater.dto.WaterBodyDetails;
 import org.example.forthewater.dto.WeeklyWaterMetric;
 import org.example.forthewater.dto.copernicus.CopernicusMetrics;
+import org.example.forthewater.dto.sensor.BeaconLatestDTO;
 import org.example.forthewater.dto.sensor.BeaconLocationDTO;
 import org.example.forthewater.mapper.WaterBodyMapper;
 import org.example.forthewater.mapper.WaterMetricMapper;
+import org.example.forthewater.model.BeaconReadingEntity;
 import org.example.forthewater.model.WaterBodyEntity;
 import org.example.forthewater.model.WaterMetricEntity;
 import org.example.forthewater.repository.BeaconReadingRepository;
@@ -106,13 +108,27 @@ public class WaterAnalysisService {
             return readingRepository.findFirstByBeaconOrderByTimestampDesc(beacon)
                     .map(lastReading -> new BeaconLocationDTO(
                             beacon.getUuid(),
-                            "test",
                             lastReading.getLatitude(),
                             lastReading.getLongitude(),
                             lastReading.getTimestamp()
                     ))
                     // If a beacon exists but has no readings yet, return it with null coords
-                    .orElse(new BeaconLocationDTO(beacon.getUuid(), "test", null, null, null));
+                    .orElse(new BeaconLocationDTO(beacon.getUuid(),  null, null, null));
+        }).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<BeaconLatestDTO> getAllBeaconsWithLatest() {
+        return beaconRepository.findAll().stream().map(beacon -> {
+            // Fetch the single latest pulse for this specific beacon
+            BeaconReadingEntity latest = readingRepository
+                    .findFirstByBeaconOrderByTimestampDesc(beacon)
+                    .orElse(null);
+
+            return new BeaconLatestDTO(
+                    beacon.getUuid(),
+                    latest
+            );
         }).toList();
     }
 

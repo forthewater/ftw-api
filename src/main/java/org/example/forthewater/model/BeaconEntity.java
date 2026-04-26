@@ -11,8 +11,6 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class BeaconEntity {
-
-
     @Column(unique = true, nullable = false)
     @Id
     private String uuid;

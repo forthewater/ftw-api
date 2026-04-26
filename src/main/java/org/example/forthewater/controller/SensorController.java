@@ -1,8 +1,11 @@
 package org.example.forthewater.controller;
 
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.forthewater.dto.sensor.BeaconLatestDTO;
 import org.example.forthewater.dto.sensor.BeaconLocationDTO;
+import org.example.forthewater.dto.sensor.BeaconStatusDTO;
 import org.example.forthewater.dto.sensor.SensorTelemetry;
 import org.example.forthewater.model.BeaconEntity;
 import org.example.forthewater.model.BeaconReadingEntity;
@@ -26,7 +29,11 @@ public class SensorController {
     private final WaterAnalysisService waterAnalysisService;
 
 
-    @GetMapping("/")
+    /**
+     * RAW DUMP (For Debugging)
+     * URL: GET /data/beacons/all
+     */
+    @GetMapping("/all")
     public ResponseEntity<List<BeaconReadingEntity>> getAllReadings() {
         log.info("📊 Fetching all sensor readings from the database.");
         return ResponseEntity.ok(repository.findAll());
@@ -42,6 +49,7 @@ public class SensorController {
                 .orElseGet(() -> beaconRepository.save(
                         BeaconEntity.builder().uuid(uuid).build()
                 ));
+
 
         // 2. Build the Reading linked to that Beacon
         BeaconReadingEntity reading = BeaconReadingEntity.builder()
@@ -63,6 +71,16 @@ public class SensorController {
         return ResponseEntity.ok("Telemetry linked to beacon " + uuid);
     }
 
+    /**
+     * GET ALL BEACONS + LATEST READING
+     * URL: GET http://10.121.68.128:8080/data/beacons/latest
+     */
+    @GetMapping("/latest")
+    public ResponseEntity<List<BeaconLatestDTO>> getLatestForEach() {
+        log.info("📡 Fetching the latest pulse for the entire beacon fleet");
+        return ResponseEntity.ok(waterAnalysisService.getAllBeaconsWithLatest());
+    }
+
     @GetMapping("/{uuid}/telemetry")
     public ResponseEntity<List<BeaconReadingEntity>> getFullTelemetry(@PathVariable String uuid) {
         return beaconRepository.findByUuid(uuid)
@@ -78,5 +96,20 @@ public class SensorController {
     public ResponseEntity<List<BeaconLocationDTO>> getMapLocations() {
         log.info("📍 Fetching latest coordinates for all beacons");
         return ResponseEntity.ok(waterAnalysisService.getAllBeaconsWithLatestCoords());
+    }
+
+
+    public List<BeaconStatusDTO> getLatestStatusForAllBeacons() {
+        return beaconRepository.findAll().stream().map(beacon -> {
+            // Find the single most recent reading for this beacon
+            BeaconReadingEntity latest = repository
+                    .findFirstByBeaconOrderByTimestampDesc(beacon)
+                    .orElse(null);
+
+            return new BeaconStatusDTO(
+                    beacon.getUuid(),
+                    latest
+            );
+        }).toList();
     }
 }
