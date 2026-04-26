@@ -1,0 +1,28 @@
+app:
+  overpass:
+    url: "http://overpass-api.de/api/interpreter"
+    search-radius: 1000 # meters
+  copernicus:
+    stat-api-url: "https://sh.dataspace.copernicus.eu/api/v1/statistics"
+    client-id: "YOUR_COPERNICUS_CLIENT_ID" # Get this from their portal
+    client-secret: "YOUR_COPERNICUS_SECRET"
+
+    # The API that calculates the 5-year satellite data (NDWI, NDCI, etc.)
+
+    # The Keycloak server that gives you the Bearer Token
+    auth-url: "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/forthewater
+    username: user
+    password: password
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update # Automatically creates/updates tables based on your Java classes
+    show-sql: true # Helpful for debugging—see the queries in the console
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect

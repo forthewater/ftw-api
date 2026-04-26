@@ -1,0 +1,29 @@
+services:
+  db:
+    image: postgres:15
+    container_name: water_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: forthewater
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d forthewater"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: water_backend
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # We override the localhost URL because inside Docker,
+      # the DB host is called "db" (the service name)
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/forthewater
+      - SPRING_DATASOURCE_USERNAME=user
+      - SPRING_DATASOURCE_PASSWORD=password
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
