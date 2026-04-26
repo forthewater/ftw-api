@@ -8,10 +8,13 @@ import org.example.forthewater.client.OverpassClient;
 import org.example.forthewater.dto.WaterBodyDetails;
 import org.example.forthewater.dto.WeeklyWaterMetric;
 import org.example.forthewater.dto.copernicus.CopernicusMetrics;
+import org.example.forthewater.dto.sensor.BeaconLocationDTO;
 import org.example.forthewater.mapper.WaterBodyMapper;
 import org.example.forthewater.mapper.WaterMetricMapper;
 import org.example.forthewater.model.WaterBodyEntity;
 import org.example.forthewater.model.WaterMetricEntity;
+import org.example.forthewater.repository.BeaconReadingRepository;
+import org.example.forthewater.repository.BeaconRepository;
 import org.example.forthewater.repository.WaterBodyRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +34,8 @@ public class WaterAnalysisService {
     private final WaterBodyRepository waterBodyRepository;
     private final WaterBodyMapper waterBodyMapper;
     private final WaterMetricMapper waterMetricMapper;
+    private final BeaconReadingRepository readingRepository;
+    private final BeaconRepository beaconRepository;
 
     /**
      * FRESH TRACK: No DB check. Fetches from APIs, saves to DB, returns result.
@@ -92,6 +97,23 @@ public class WaterAnalysisService {
                         entity.getMetrics().stream().map(waterMetricMapper::toDto).toList()
                 ))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<BeaconLocationDTO> getAllBeaconsWithLatestCoords() {
+        return beaconRepository.findAll().stream().map(beacon -> {
+            // Find the most recent reading for this beacon
+            return readingRepository.findFirstByBeaconOrderByTimestampDesc(beacon)
+                    .map(lastReading -> new BeaconLocationDTO(
+                            beacon.getUuid(),
+                            "test",
+                            lastReading.getLatitude(),
+                            lastReading.getLongitude(),
+                            lastReading.getTimestamp()
+                    ))
+                    // If a beacon exists but has no readings yet, return it with null coords
+                    .orElse(new BeaconLocationDTO(beacon.getUuid(), "test", null, null, null));
+        }).toList();
     }
 
     private WaterMetricEntity mapToEntity(WeeklyWaterMetric dto, WaterBodyEntity parent) {
