@@ -41,19 +41,21 @@ public class WaterAnalysisService {
     private final BeaconRepository beaconRepository;
 
     /**
-     * FRESH TRACK: No DB check. Fetches from APIs, saves to DB, returns result.
+     * TRACK: Returns cached data when present, otherwise fetches from APIs and persists.
      */
     public CopernicusMetrics fetchFreshData(double lat, double lon) throws Exception {
-        log.info("🚀 Force Fetching fresh satellite data for {}, {}", lat, lon);
+        log.info("🔎 Track request for {}, {}", lat, lon);
 
         Optional<WaterBodyEntity> cachedByCoordinates = waterBodyRepository.findByCenterLatAndCenterLon(lat, lon);
+        if (cachedByCoordinates.isPresent()) {
+            log.info("✅ Cache hit for {}, {}. Returning stored water body.", lat, lon);
+            return toCopernicusMetrics(cachedByCoordinates.get());
+        }
+
+        log.info("🚀 Cache miss for {}, {}. Fetching fresh satellite data.", lat, lon);
 
         WaterBodyDetails details = overpassClient.getLakePolygon(lat, lon);
         if (details.polygon().isEmpty()) {
-            if (cachedByCoordinates.isPresent()) {
-                log.warn("No polygon from Overpass for {}, {}, returning cached DB data", lat, lon);
-                return toCopernicusMetrics(cachedByCoordinates.get());
-            }
             throw new RuntimeException("No water body found.");
         }
 
