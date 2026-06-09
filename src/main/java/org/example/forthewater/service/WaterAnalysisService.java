@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -45,27 +46,55 @@ public class WaterAnalysisService {
     public CopernicusMetrics fetchFreshData(double lat, double lon) throws Exception {
         log.info("🚀 Force Fetching fresh satellite data for {}, {}", lat, lon);
 
+        Optional<WaterBodyEntity> cachedByCoordinates = waterBodyRepository.findByCenterLatAndCenterLon(lat, lon);
+
         WaterBodyDetails details = overpassClient.getLakePolygon(lat, lon);
         if (details.polygon().isEmpty()) {
+            if (cachedByCoordinates.isPresent()) {
+                log.warn("No polygon from Overpass for {}, {}, returning cached DB data", lat, lon);
+                return toCopernicusMetrics(cachedByCoordinates.get());
+            }
             throw new RuntimeException("No water body found.");
         }
 
-        String rawJson = copernicusClient.fetchHistoricalData(details.polygon(), details.name());
-        List<WeeklyWaterMetric> metricsDto = parserService.parseToMeansOnly(rawJson);
+        try {
+            String rawJson = copernicusClient.fetchHistoricalData(details.polygon(), details.name());
+            List<WeeklyWaterMetric> metricsDto = parserService.parseToMeansOnly(rawJson);
 
-        // Update or Create in DB
-        WaterBodyEntity entity = waterBodyRepository.findByCenterLatAndCenterLon(lat, lon)
-                .orElseGet(() -> waterBodyMapper.toEntity(details, lat, lon));
+            // Update or create in DB.
+            WaterBodyEntity entity = cachedByCoordinates
+                    .orElseGet(() -> waterBodyMapper.toEntity(details, lat, lon));
 
-        // Map and link metrics
-        List<WaterMetricEntity> metricEntities = metricsDto.stream()
-                .map(dto -> mapToEntity(dto, entity))
-                .collect(Collectors.toList());
+            // Map and link metrics.
+            List<WaterMetricEntity> metricEntities = metricsDto.stream()
+                    .map(dto -> mapToEntity(dto, entity))
+                    .collect(Collectors.toList());
 
-        entity.setMetrics(metricEntities);
-        WaterBodyEntity savedEntity = waterBodyRepository.save(entity);
+            entity.setMetrics(metricEntities);
+            WaterBodyEntity savedEntity = waterBodyRepository.save(entity);
 
-        return new CopernicusMetrics(String.valueOf(savedEntity.getId()), details, metricsDto);
+            return new CopernicusMetrics(String.valueOf(savedEntity.getId()), details, metricsDto);
+        } catch (Exception ex) {
+            Optional<WaterBodyEntity> cached = cachedByCoordinates.isPresent()
+                    ? cachedByCoordinates
+                    : waterBodyRepository.findByName(details.name());
+
+            if (cached.isPresent()) {
+                log.warn("Fresh Copernicus fetch failed for {}, {}. Returning cached DB data instead.", lat, lon, ex);
+                return toCopernicusMetrics(cached.get());
+            }
+
+            log.warn("Fresh Copernicus fetch failed for {}, {} with no cache. Saving outline-only water body.", lat, lon, ex);
+            WaterBodyEntity fallbackEntity = waterBodyMapper.toEntity(details, lat, lon);
+            fallbackEntity.setMetrics(List.of());
+            WaterBodyEntity savedFallback = waterBodyRepository.save(fallbackEntity);
+
+            return new CopernicusMetrics(
+                    String.valueOf(savedFallback.getId()),
+                    details,
+                    List.of()
+            );
+        }
     }
 
     /**
@@ -153,5 +182,13 @@ public class WaterAnalysisService {
                 .ndci(dto.getNdci())
                 .turbidity(dto.getTurbidity())
                 .build();
+    }
+
+    private CopernicusMetrics toCopernicusMetrics(WaterBodyEntity entity) {
+        return new CopernicusMetrics(
+                String.valueOf(entity.getId()),
+                waterBodyMapper.toDto(entity),
+                entity.getMetrics().stream().map(waterMetricMapper::toDto).toList()
+        );
     }
 }
