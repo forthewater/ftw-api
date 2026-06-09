@@ -5,16 +5,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.example.forthewater.*;
 import org.example.forthewater.dto.WaterBodyDetails;
 import org.example.forthewater.dto.copernicus.CopernicusMetrics;
-import org.example.forthewater.dto.WeeklyWaterMetric;
-import org.example.forthewater.model.WaterBodyEntity;
-import org.example.forthewater.service.CopernicusParserService;
 import org.example.forthewater.service.WaterAnalysisService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.example.forthewater.client.CopernicusClient;
 
 import java.util.List;
-import java.util.Optional;
 
 @Slf4j
 @RestController
@@ -77,5 +72,11 @@ public class WaterBodyController {
     @GetMapping("/all")
     public ResponseEntity<List<CopernicusMetrics>> getAll() {
         return ResponseEntity.ok(waterAnalysisService.getAllSaved());
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteWaterBody(@PathVariable long id) {
+        boolean deleted = waterAnalysisService.deleteWaterBodyById(id);
+        return deleted ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
     }
 }

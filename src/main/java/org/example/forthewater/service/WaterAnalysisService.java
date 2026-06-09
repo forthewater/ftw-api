@@ -63,9 +63,9 @@ public class WaterAnalysisService {
                 .collect(Collectors.toList());
 
         entity.setMetrics(metricEntities);
-        waterBodyRepository.save(entity);
+        WaterBodyEntity savedEntity = waterBodyRepository.save(entity);
 
-        return new CopernicusMetrics(details, metricsDto);
+        return new CopernicusMetrics(String.valueOf(savedEntity.getId()), details, metricsDto);
     }
 
     /**
@@ -80,6 +80,7 @@ public class WaterAnalysisService {
                 .map(opt -> {
                     WaterBodyEntity e = opt.get();
                     return new CopernicusMetrics(
+                            String.valueOf(e.getId()),
                             waterBodyMapper.toDto(e),
                             e.getMetrics().stream().map(waterMetricMapper::toDto).toList()
                     );
@@ -95,10 +96,21 @@ public class WaterAnalysisService {
 
         return waterBodyRepository.findAll().stream()
                 .map(entity -> new CopernicusMetrics(
+                        String.valueOf(entity.getId()),
                         waterBodyMapper.toDto(entity),
                         entity.getMetrics().stream().map(waterMetricMapper::toDto).toList()
                 ))
                 .toList();
+    }
+
+    @Transactional
+    public boolean deleteWaterBodyById(long id) {
+        if (!waterBodyRepository.existsById(id)) {
+            return false;
+        }
+
+        waterBodyRepository.deleteById(id);
+        return true;
     }
 
     @Transactional(readOnly = true)

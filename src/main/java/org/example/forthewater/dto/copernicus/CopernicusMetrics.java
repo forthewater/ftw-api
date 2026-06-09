@@ -12,6 +12,7 @@ import java.util.List;
 @Getter
 @Setter
 public class CopernicusMetrics {
+    String id;
     WaterBodyDetails waterBodyDetails;
     List<WeeklyWaterMetric> weeklyWaterMetrics;
 }

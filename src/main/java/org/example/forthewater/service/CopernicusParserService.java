@@ -81,7 +81,7 @@ public class CopernicusParserService {
                 .map(waterMetricMapper::toDto)
                 .toList();
 
-        return new CopernicusMetrics(details, metrics);
+        return new CopernicusMetrics(String.valueOf(waterBody.getId()), details, metrics);
     }
 
     // A tiny helper method to stop us from writing .path().path().path() 100 times
