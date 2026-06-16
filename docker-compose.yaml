@@ -2,6 +2,8 @@ services:
   db:
     image: postgres:15
     container_name: water_db
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
@@ -20,6 +22,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
       # We override the localhost URL because inside Docker,
       # the DB host is called "db" (the service name)
