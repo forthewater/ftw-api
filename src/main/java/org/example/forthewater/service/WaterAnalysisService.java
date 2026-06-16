@@ -47,21 +47,21 @@ public class WaterAnalysisService {
         log.info("🔎 Track request for {}, {}", lat, lon);
 
         Optional<WaterBodyEntity> cachedByCoordinates = waterBodyRepository.findByCenterLatAndCenterLon(lat, lon);
-        if (cachedByCoordinates.isPresent()) {
+        if (cachedByCoordinates.isPresent() && hasMetrics(cachedByCoordinates.get())) {
             log.info("✅ Cache hit for {}, {}. Returning stored water body.", lat, lon);
             return toCopernicusMetrics(cachedByCoordinates.get());
         }
 
         log.info("🚀 Cache miss for {}, {}. Fetching fresh satellite data.", lat, lon);
 
-        WaterBodyDetails details = overpassClient.getLakePolygon(lat, lon);
-        if (details.polygon().isEmpty()) {
-            throw new RuntimeException("No water body found.");
-        }
+        WaterBodyDetails details = fetchWaterBodyDetails(lat, lon);
 
         try {
             String rawJson = copernicusClient.fetchHistoricalData(details.polygon(), details.name());
             List<WeeklyWaterMetric> metricsDto = parserService.parseToMeansOnly(rawJson);
+            if (metricsDto.isEmpty()) {
+                throw new RuntimeException("Copernicus returned no weekly metrics.");
+            }
 
             // Update or create in DB.
             WaterBodyEntity entity = cachedByCoordinates
@@ -81,21 +81,14 @@ public class WaterAnalysisService {
                     ? cachedByCoordinates
                     : waterBodyRepository.findByName(details.name());
 
-            if (cached.isPresent()) {
+            if (cached.isPresent() && hasMetrics(cached.get())) {
                 log.warn("Fresh Copernicus fetch failed for {}, {}. Returning cached DB data instead.", lat, lon, ex);
                 return toCopernicusMetrics(cached.get());
             }
 
-            log.warn("Fresh Copernicus fetch failed for {}, {} with no cache. Saving outline-only water body.", lat, lon, ex);
-            WaterBodyEntity fallbackEntity = waterBodyMapper.toEntity(details, lat, lon);
-            fallbackEntity.setMetrics(List.of());
-            WaterBodyEntity savedFallback = waterBodyRepository.save(fallbackEntity);
-
-            return new CopernicusMetrics(
-                    String.valueOf(savedFallback.getId()),
-                    details,
-                    List.of()
-            );
+            String rootCause = rootCauseMessage(ex);
+            log.warn("Fresh Copernicus fetch failed for {}, {} with no usable cached metrics: {}", lat, lon, rootCause, ex);
+            throw new RuntimeException("Satellite data fetch failed and no cached metrics are available: " + rootCause, ex);
         }
     }
 
@@ -191,6 +184,56 @@ public class WaterAnalysisService {
                 String.valueOf(entity.getId()),
                 waterBodyMapper.toDto(entity),
                 entity.getMetrics().stream().map(waterMetricMapper::toDto).toList()
+        );
+    }
+
+    private boolean hasMetrics(WaterBodyEntity entity) {
+        return entity.getMetrics() != null && !entity.getMetrics().isEmpty();
+    }
+
+    private String rootCauseMessage(Throwable error) {
+        Throwable cursor = error;
+        while (cursor.getCause() != null) {
+            cursor = cursor.getCause();
+        }
+
+        String message = cursor.getMessage() != null ? cursor.getMessage() : cursor.getClass().getSimpleName();
+        if (message.contains("ACCESS_INSUFFICIENT_PROCESSING_UNITS")
+                || message.contains("Insufficient processing units")) {
+            return "Copernicus account has insufficient processing units or request credits.";
+        }
+
+        return message;
+    }
+
+    private WaterBodyDetails fetchWaterBodyDetails(double lat, double lon) {
+        try {
+            WaterBodyDetails details = overpassClient.getLakePolygon(lat, lon);
+            if (!details.polygon().isEmpty()) {
+                return details;
+            }
+            log.warn("Overpass returned no water body for {}, {}. Using point fallback polygon.", lat, lon);
+        } catch (Exception ex) {
+            log.warn("Overpass outline lookup failed for {}, {}. Using point fallback polygon.", lat, lon, ex);
+        }
+
+        return buildFallbackDetails(lat, lon);
+    }
+
+    private WaterBodyDetails buildFallbackDetails(double lat, double lon) {
+        double delta = 0.002;
+        List<Coordinate> polygon = List.of(
+                new Coordinate(lat - delta, lon - delta),
+                new Coordinate(lat - delta, lon + delta),
+                new Coordinate(lat + delta, lon + delta),
+                new Coordinate(lat + delta, lon - delta),
+                new Coordinate(lat - delta, lon - delta)
+        );
+
+        return new WaterBodyDetails(
+                String.format("Water body at %.4f, %.4f", lat, lon),
+                polygon,
+                "OpenStreetMap outline lookup failed; using a small area around the selected point."
         );
     }
 }

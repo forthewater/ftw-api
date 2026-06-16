@@ -6,6 +6,7 @@ import org.example.forthewater.*;
 import org.example.forthewater.dto.WaterBodyDetails;
 import org.example.forthewater.dto.copernicus.CopernicusMetrics;
 import org.example.forthewater.service.WaterAnalysisService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -46,12 +47,12 @@ public class WaterBodyController {
         return ResponseEntity.ok(details);
     }
     @GetMapping("/track")
-    public ResponseEntity<CopernicusMetrics> trackFresh(@RequestParam double lat, @RequestParam double lon) {
+    public ResponseEntity<?> trackFresh(@RequestParam double lat, @RequestParam double lon) {
         try {
             return ResponseEntity.ok(waterAnalysisService.fetchFreshData(lat, lon));
         } catch (Exception e) {
             log.error("Satellite fetch failed!", e);
-            return ResponseEntity.internalServerError().build();
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(e.getMessage());
         }
     }
 
