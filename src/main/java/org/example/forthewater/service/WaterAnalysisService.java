@@ -47,7 +47,9 @@ public class WaterAnalysisService {
         log.info("🔎 Track request for {}, {}", lat, lon);
 
         Optional<WaterBodyEntity> cachedByCoordinates = waterBodyRepository.findByCenterLatAndCenterLon(lat, lon);
-        if (cachedByCoordinates.isPresent() && hasMetrics(cachedByCoordinates.get())) {
+        if (cachedByCoordinates.isPresent()
+                && hasMetrics(cachedByCoordinates.get())
+                && hasReliableOutline(cachedByCoordinates.get())) {
             log.info("✅ Cache hit for {}, {}. Returning stored water body.", lat, lon);
             return toCopernicusMetrics(cachedByCoordinates.get());
         }
@@ -66,6 +68,9 @@ public class WaterAnalysisService {
             // Update or create in DB.
             WaterBodyEntity entity = cachedByCoordinates
                     .orElseGet(() -> waterBodyMapper.toEntity(details, lat, lon));
+            if (cachedByCoordinates.isPresent()) {
+                waterBodyMapper.updateEntity(entity, details, lat, lon);
+            }
 
             // Map and link metrics.
             List<WaterMetricEntity> metricEntities = metricsDto.stream()
@@ -81,7 +86,7 @@ public class WaterAnalysisService {
                     ? cachedByCoordinates
                     : waterBodyRepository.findByName(details.name());
 
-            if (cached.isPresent() && hasMetrics(cached.get())) {
+            if (cached.isPresent() && hasMetrics(cached.get()) && hasReliableOutline(cached.get())) {
                 log.warn("Fresh Copernicus fetch failed for {}, {}. Returning cached DB data instead.", lat, lon, ex);
                 return toCopernicusMetrics(cached.get());
             }
@@ -191,6 +196,10 @@ public class WaterAnalysisService {
         return entity.getMetrics() != null && !entity.getMetrics().isEmpty();
     }
 
+    private boolean hasReliableOutline(WaterBodyEntity entity) {
+        return entity.getName() != null && !entity.getName().startsWith("Water body at ");
+    }
+
     private String rootCauseMessage(Throwable error) {
         Throwable cursor = error;
         while (cursor.getCause() != null) {
@@ -212,28 +221,11 @@ public class WaterAnalysisService {
             if (!details.polygon().isEmpty()) {
                 return details;
             }
-            log.warn("Overpass returned no water body for {}, {}. Using point fallback polygon.", lat, lon);
+            log.warn("Overpass returned no water body for {}, {}.", lat, lon);
         } catch (Exception ex) {
-            log.warn("Overpass outline lookup failed for {}, {}. Using point fallback polygon.", lat, lon, ex);
+            log.warn("Overpass outline lookup failed for {}, {}.", lat, lon, ex);
         }
 
-        return buildFallbackDetails(lat, lon);
-    }
-
-    private WaterBodyDetails buildFallbackDetails(double lat, double lon) {
-        double delta = 0.002;
-        List<Coordinate> polygon = List.of(
-                new Coordinate(lat - delta, lon - delta),
-                new Coordinate(lat - delta, lon + delta),
-                new Coordinate(lat + delta, lon + delta),
-                new Coordinate(lat + delta, lon - delta),
-                new Coordinate(lat - delta, lon - delta)
-        );
-
-        return new WaterBodyDetails(
-                String.format("Water body at %.4f, %.4f", lat, lon),
-                polygon,
-                "OpenStreetMap outline lookup failed; using a small area around the selected point."
-        );
+        throw new RuntimeException("OpenStreetMap outline lookup failed. Choose a point inside the water body and try again.");
     }
 }

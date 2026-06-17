@@ -26,6 +26,13 @@ public class WaterBodyMapper {
                 .build();
     }
 
+    public void updateEntity(WaterBodyEntity entity, WaterBodyDetails dto, double lat, double lon) {
+        entity.setName(dto.name());
+        entity.setCenterLat(lat);
+        entity.setCenterLon(lon);
+        entity.setPolygonJson(serializePolygon(dto.polygon()));
+    }
+
     // Convert Entity to DTO (For Returning to Frontend)
     public WaterBodyDetails toDto(WaterBodyEntity entity) {
         return new WaterBodyDetails(
